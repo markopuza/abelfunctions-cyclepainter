@@ -1,2 +1,1 @@
-# abelfunctions-cyclepainter
-Implementation of CyclePainter on Sage, using abelfunctions
+## CyclePainter  <sub><sup><sub><sup>2: Auckland<sub><sup> <sub><sup>
