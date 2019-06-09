@@ -34,16 +34,14 @@ def intersection((x1, y1), (x2, y2), (x3, y3), (x4, y4)):
     return (px/d, py/d)
 
 
-
-
 class BranchPoint:
 
     def __init__(self, sage_val):
         self.sage_val = sage_val
         self.is_finite = sage_val not in (+Infinity, -Infinity)
         self.val = sage_val.n() if self.is_finite else 1e10
-        self.real = self.val.real()
-        self.imag = self.val.imag()
+        self.real = self.val.real() if self.is_finite else 1e10
+        self.imag = self.val.imag() if self.is_finite else 0
         self.permutation = None
         self.branch_cut = None
 
@@ -52,7 +50,6 @@ class BranchPoint:
 
     def __repr__(self):
         return self.__str__()
-
 
 
 
