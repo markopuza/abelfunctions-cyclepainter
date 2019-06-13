@@ -10,7 +10,7 @@ import sys
 # abelfunctions
 from abelfunctions import *
 from abelfunctions.complex_path import ComplexLine
-from abelfunctions.utilities import Permutation
+from abelfunctions.utilities import Permutation, matching_permutation
 
 
 
@@ -36,8 +36,9 @@ def intersection((x1, y1), (x2, y2), (x3, y3), (x4, y4)):
 
 class BranchPoint:
 
-    def __init__(self, sage_val):
+    def __init__(self, sage_val, cp=None):
         self.sage_val = sage_val
+        self.cp = cp
         self.is_finite = sage_val not in (+Infinity, -Infinity)
         self.val = sage_val.n() if self.is_finite else 1e10
         self.real = self.val.real() if self.is_finite else 1e10
@@ -45,18 +46,56 @@ class BranchPoint:
         self.permutation = None
         self.branch_cut = None
 
+    def _find_permutation_path(self, fineness=10):
+        def _norm(x, scale=1, center=self.cp.cut_point):
+            x = np.complex(x)
+            r = np.complex(x - center)
+            return np.complex(center + scale*r/np.abs(r))
+
+        # radius of a circle encompassing all branch points
+        R = 1.5*max(np.abs(x.val - self.cp.cut_point) for x in self.cp.branch_points if x.is_finite)
+        # angle of this branch point
+        self.angle = np.angle(self.val - self.cp.cut_point)
+
+        base_point = _norm(self.cp.monodromy_point, scale=R)
+        if self.is_finite:
+            # half the distance to closest problematic point
+            r = np.abs(np.complex(self.val - self.cp.cut_point))
+            for x in self.cp.surface.discriminant_points:
+                if x.n() != self.val:
+                    r = min(r, 0.5*np.abs(np.complex(self.val - np.complex(x))))
+
+            outter = _norm(self.val, scale=R)
+            circle_start = _norm(self.val, scale=np.abs(self.val - self.cp.cut_point) + r)
+            ang = np.angle(outter - self.cp.cut_point) - np.angle(base_point - self.cp.cut_point)
+            if self.imag < self.cp.cut_point.imag():
+                ang = 2*np.pi + ang
+
+            points_to_outter = [self.cp.monodromy_point] + [np.complex(self.cp.cut_point) + np.complex(base_point-self.cp.cut_point)*np.exp(1j*ang*float(i)/fineness) for i in range(fineness+1)]
+            around = [self.val + (circle_start-self.val)*np.exp(2j*np.pi*i/fineness) for i in range(fineness+1)]
+            points = points_to_outter + around + points_to_outter[::-1]
+        else:
+            points = [self.cp.monodromy_point] + [np.complex(self.cp.cut_point) + np.complex(base_point-self.cp.cut_point)*np.exp(-2j*np.pi*i/fineness) for i in range(fineness+1)] + [self.cp.monodromy_point]
+
+        # self.cp.ax.scatter([np.real(x) for x in points], [np.imag(x) for x in points])
+        # return
+        self.permutation_path = CyclePainterPath(points, 0, self.cp, color_sheets=False)
+        self.permutation = matching_permutation(self.permutation_path.get_y(0), self.permutation_path.get_y(1))
+        # print(self, self.permutation)
+
     def __str__(self):
         return '|BP|{' + str(self.sage_val) +', ' + str(self.permutation) + '} '
 
     def __repr__(self):
         return self.__str__()
 
-
+    def show_permutation_path(self):
+        self.permutation_path.display()
 
 
 class CyclePainterPath:
 
-    def __init__(self, projection_points, starting_sheet, cyclepainter, build_surface=True):
+    def __init__(self, projection_points, starting_sheet, cyclepainter, build_surface=True, color_sheets=True):
         projection_points = [np.complex(x) for x in projection_points]
         self.starting_sheet = starting_sheet
         self.projection_points = projection_points
@@ -90,8 +129,9 @@ class CyclePainterPath:
                 colors.append(self.cp.sheet_color_map[current_sheet])
 
                 clockwise = ccw((self.cp.cut_point.real(), self.cp.cut_point.imag()), p, s[1])
-                current_sheet = x.permutation._list.index(current_sheet) if clockwise \
-                                 else x.permutation._list[current_sheet]
+                if color_sheets:
+                    current_sheet = x.permutation._list.index(current_sheet) if clockwise \
+                                     else x.permutation._list[current_sheet]
                 last = p
             lines.append((last, s[1]))
             sheets.append(current_sheet)
@@ -230,7 +270,7 @@ class CyclePainter:
         self.kappa = kappa
 
         bp, _ = self.surface.monodromy_group()
-        self.branch_points = [BranchPoint(x) for x in bp]
+        self.branch_points = [BranchPoint(x, cp=self) for x in bp]
         self.has_infinite_bp = any(not x.is_finite for x in self.branch_points)
 
         # Bounding box of the (finite) branch points
@@ -244,6 +284,7 @@ class CyclePainter:
         #####################
         self.radio_sheet = 0
         self.path_builder = PathBuilder(self)
+        self.sheet_color_map = dict(enumerate(plt.cm.rainbow(np.linspace(0, 1, self.degree))))
         self.PATHS = {}
 
         #####################
@@ -255,8 +296,18 @@ class CyclePainter:
         self.monodromy_point = np.complex(np.real(self.surface.base_point) + I*self.cut_point.imag())
         self.surface = RiemannSurface(curve, base_point=self.monodromy_point)
 
-        _, branch_permutations = self.surface.monodromy_group()
-        self._compute_branch_permutations(branch_permutations)
+        bp, branch_permutations = self.surface.monodromy_group()
+        self.branch_points = [BranchPoint(x, cp=self) for x in bp]
+
+        # branch cuts
+        _cut_point_coor = (self.cut_point.real(), self.cut_point.imag())
+        _branch_cuts = [(_cut_point_coor, (x.real, x.imag)) for x in self.branch_points if x.is_finite]
+        for x in self.branch_points:
+            x.branch_cut = (_cut_point_coor, (x.real, x.imag))
+
+        # self._compute_branch_permutations(branch_permutations)
+        for x in self.branch_points:
+            x._find_permutation_path()
 
     def _find_cut_point(self, fineness=8):
         '''
@@ -308,88 +359,6 @@ class CyclePainter:
 
         return best_candidate
 
-    def _compute_branch_permutations(self, abelf_perms, eps=1e-9):
-
-        # divide the branch points into three categories
-        left, right = [], [] # and infinity
-        for i, x in enumerate(self.branch_points):
-            if not x.is_finite:
-                continue
-            if ccw((np.real(self.monodromy_point), np.imag(self.monodromy_point)), \
-                        (self.cut_point.real(), self.cut_point.imag()), (x.real, x.imag)):
-                left.append(i)
-            else:
-                right.append(i)
-
-        # will store the permutations we are looking for
-        sigma = [None for _ in range(len(self.branch_points))]
-
-        # for sorting by angle around pc
-        f = lambda x: atan2(-(x - self.cut_point).imag(), -(x - self.cut_point).real()).n()
-
-        #######
-        # case 1: branch points to the left of the line
-        #######
-        # sort the points decreasingly by the angle with positive real axis
-        left.sort(key=lambda i: -f(self.branch_points[i].val))
-
-        # compute the correspondend permutations one by one
-        for i in left:
-            # these will be the branch points whose cuts were intersected
-            # by abelfunctions monodromy path, ordered by angle
-            ibp = []
-            for j in left[:left.index(i)]:
-                if ccw((np.real(self.monodromy_point), np.imag(self.monodromy_point) + eps), \
-                            (self.branch_points[i].real, self.branch_points[i].imag + eps), \
-                            (self.branch_points[j].real, self.branch_points[j].imag)):
-                    ibp.append(j)
-            sigma[i] = Permutation(range(self.degree)) # identity
-            for k in ibp[::-1]:
-                sigma[i] = sigma[k].inverse() * sigma[i]
-            sigma[i] = abelf_perms[i] * sigma[i]
-            for k in ibp:
-                sigma[i] = sigma[k] * sigma[i]
-
-        #######
-        # case 2: branch points to the right of the line
-        #######
-        # sort the points increasingly by the angle with positive real axis
-        right.sort(key=lambda i: f(self.branch_points[i].val))
-
-        # compute the correspondend permutations one by one
-        for i in right:
-            # these will be the branch points whose cuts were intersected
-            # by abelfunctions monodromy path, ordered by angle
-            ibp = []
-            for j in left[:right.index(i)]:
-                if not ccw((np.real(self.monodromy_point), np.imag(self.monodromy_point)), \
-                            (self.branch_points[i].real, self.branch_points[i].imag), \
-                            (self.branch_points[j].real, self.branch_points[j].imag)):
-                    ibp.append(j)
-            sigma[i] = Permutation(range(self.degree)) # identity
-            for k in ibp[::-1]:
-                sigma[i] = sigma[k] * sigma[i]
-            sigma[i] = abelf_perms[i] * sigma[i]
-            for k in ibp:
-                sigma[i] = sigma[k].inverse() * sigma[i]
-
-
-        #######
-        # case 3: infinity
-        #######
-        # this is just the inverse of the product of all of the finite branch point permutations
-        if self.has_infinite_bp:
-            all_perm = Permutation(range(self.degree))
-            for i in right[::-1] + left:
-                all_perm = sigma[i] * all_perm
-
-            for i, x in enumerate(self.branch_points):
-                if not x.is_finite:
-                    sigma[i] = all_perm.inverse()
-
-        for x, perm in zip(self.branch_points, sigma):
-            x.permutation = perm
-
     def _radio_handler(self, label):
         self.radio_sheet = int(label)
         self.path_builder.display()
@@ -430,8 +399,6 @@ class CyclePainter:
         _branch_cuts = [(_cut_point_coor, (x.real, x.imag)) for x in self.branch_points if x.is_finite]
         for x in self.branch_points:
             x.branch_cut = (_cut_point_coor, (x.real, x.imag))
-
-
         if self.has_infinite_bp:
             _branch_cuts.append((_cut_point_coor, (max(x.real for x in self.branch_points if x.is_finite) + self.real_span/6, self.cut_point.imag()) ))
         branch_cuts = mc.LineCollection(_branch_cuts, colors='k', linewidths=0.4)
@@ -485,9 +452,6 @@ class CyclePainter:
             print('     Permutation: {:s}'.format(str(x.permutation).replace(', (', '(').replace(',', '')[1:-1]))
 
 
-        # color map
-        self.sheet_color_map = dict(enumerate(plt.cm.rainbow(np.linspace(0, 1, self.degree))))
-
         # open up a new plot
         self.fig, self.ax = plt.subplots(dpi=140)
 
@@ -534,8 +498,7 @@ class CyclePainter:
             return
         p = self.path_builder._get_CyclePainterPath()
         if not p.is_closed():
-            print('Fail: The path is not closed.')
-            return
+            print('Warning: The path is not closed.')
         self.PATHS[path_name] = p
         print('Success: The path with name "{:s}" has been saved.'.format(path_name))
         return p
