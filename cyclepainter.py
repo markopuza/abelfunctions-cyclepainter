@@ -176,15 +176,17 @@ class CyclePainterPath:
         sp = self.cp.surface._path_factory.RiemannSurfacePath_from_complex_path(self._path, y0=y0)
         return sp.integrate(omega)
 
-    def intersection_number(self, path, eps=1e-11):
+    def intersection_number(self, path, eps=1e-10):
         ''' Calculates the intersection number with another path. '''
+        if path == self:
+            return 0
         intersections = 0
         for l, s in zip(self.lines, self.sheets):
             for ll, ss in zip(path.lines, path.sheets):
                 if s == ss:
                     if intersect(l[0], l[1], ll[0], ll[1]):
                         intersection_point = intersection(l[0], l[1], ll[0], ll[1])
-                        if min(dist(intersection_point, x) for x in [l[0], l[1], ll[0], ll[1]]) > eps:
+                        if dist(intersection_point, (np.real(self.cp.monodromy_point),  np.imag(self.cp.monodromy_point))) > eps:
                             intersections += 1 if ccw(l[0], intersection_point, ll[1]) else -1
 
         # around the monodromy point
@@ -201,10 +203,10 @@ class CyclePainterPath:
 
     def apply_automorphism(self, f, fineness=200):
         image = [f(self.get_x(t), self.get_y(t)[self.starting_sheet])[0] for t in np.arange(0, 1.+1./fineness, 1./fineness)]
-        self.cp.path_builder.start()
+        self.cp.path_builder.start(from_monodromy=False)
         for x in image:
             self.cp.path_builder.add(x)
-        self.cp.path_builder.finish()
+        self.cp.path_builder.finish(to_monodromy=False)
 
 
 class PathBuilder:
@@ -213,14 +215,15 @@ class PathBuilder:
         self.points = []
         self.state = 'off'
 
-    def start(self, event=None):
+    def start(self, event=None, from_monodromy=True):
         self.cp.clear_canvas()
-        self.points = [self.cp.monodromy_point]
+        self.points = [self.cp.monodromy_point] if from_monodromy else []
         self.state = 'on'
 
-    def finish(self, event=None):
+    def finish(self, event=None, to_monodromy=True):
         if self.state == 'on':
-            self.points.append(self.cp.monodromy_point)
+            if to_monodromy:
+                self.points.append(self.cp.monodromy_point)
             self.state = 'off'
             self.display()
 
@@ -525,7 +528,7 @@ class CyclePainter:
     def saved_paths(self):
         print('Saved paths:')
         for k in self.PATHS:
-            print('    ' + k)
+            print('    ' + str(k))
 
     def pickle_paths(self, filename):
         d = {name: (self.PATHS[name].projection_points, self.PATHS[name].starting_sheet) for name in self.PATHS}
@@ -542,8 +545,9 @@ class CyclePainter:
         return np.matrix([[self.PATHS[name].integrate(d) for name in (a_cycle_names+b_cycle_names)] for d in differentials])
 
     def riemann_matrix(self, a_cycle_names, b_cycle_names, differentials):
+        genus = len(a_cycle_names)
         pm = self.period_matrix(a_cycle_names, b_cycle_names, differentials)
-        A, B = pm[:,:3], pm[:,3:]
+        A, B = pm[:,:genus], pm[:,genus:]
         return np.matmul(np.linalg.inv(A), B)
 
     def intersection_matrix(self, path_names):
