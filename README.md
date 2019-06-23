@@ -5,6 +5,6 @@ with respect to custom paths.
 
 Extension of [abelfunctions](https://github.com/abelfunctions/abelfunctions) for Sage.
 
-![image](example.png)
+![image ](example.png)
 
-For a tutorial/example, see [Klein's curve.ipynb](Klein's curve.ipynb)
+For a tutorial/example, see ![Klein's curve.ipynb](Klein's curve.ipynb)
