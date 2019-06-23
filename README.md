@@ -7,4 +7,4 @@ Extension of [abelfunctions](https://github.com/abelfunctions/abelfunctions) for
 
 ![image ](example.png)
 
-For a tutorial/example, see ![Klein's curve.ipynb](Klein's curve.ipynb)
+For a tutorial/example, see [Klein's curve.ipynb](Klein's%20curve.ipynb)
