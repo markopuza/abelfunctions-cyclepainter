@@ -145,6 +145,11 @@ class CyclePainterPath:
         if clear:
             self.cp.clear_canvas()
         self.cp.ax.add_collection(self.line_collection)
+        if len(self.projection_points) > 1:
+            sx, sy = np.real(self.projection_points[0]), np.imag(self.projection_points[0])
+            ex, ey = np.real(self.projection_points[1]), np.imag(self.projection_points[1])
+            self.cp.ax.arrow(sx, sy, (ex-sx)/2, (ey-sy)/2, color=self.cp.sheet_color_map[self.starting_sheet], \
+                        head_width=0.07)
         self.cp.ax.autoscale()
         self.cp.fig.canvas.draw()
 
@@ -238,6 +243,11 @@ class PathBuilder:
             self.state = 'pause'
         elif self.state == 'pause':
             self.state = 'on'
+
+    def reverse(self, event=None):
+        if self.state == 'off':
+            self.points = self.points[::-1]
+            self.display()
 
     def add(self, x):
         self.points.append(x)
@@ -492,6 +502,11 @@ class CyclePainter:
         self.pause_button.on_clicked(self.path_builder.pause)
         self.pause_button.label.set_fontsize(6)
 
+        ax_pause = plt.axes([0.02, 0.65, 0.08, 0.04])
+        self.pause_button = Button(ax_pause,'Reverse')
+        self.pause_button.on_clicked(self.path_builder.reverse)
+        self.pause_button.label.set_fontsize(6)
+
     def save_path(self, path_name):
         if path_name in self.PATHS:
             print('Fail: The path with name "{:s}" already exists.'.format(path_name))
@@ -540,6 +555,11 @@ class CyclePainter:
             d = pickle.load(handle)
         for name in d:
             self.PATHS[name] = CyclePainterPath(d[name][0], d[name][1], self)
+
+    def add_point(self, x):
+        if self.path_builder.state == 'on':
+            self.path_builder.add(x)
+            self.path_builder.display()
 
     def period_matrix(self, a_cycle_names, b_cycle_names, differentials):
         return np.matrix([[self.PATHS[name].integrate(d) for name in (a_cycle_names+b_cycle_names)] for d in differentials])
