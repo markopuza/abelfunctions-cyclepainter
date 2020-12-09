@@ -26,8 +26,13 @@ def intersect(a, b, c, d):
     ''' UTILITY method to check if two *line segments* intersect '''
     return bool(ccw(a, c, d) != ccw(b, c, d) and ccw(a, b, c) != ccw(a, b, d))
 
-def intersection((x1, y1), (x2, y2), (x3, y3), (x4, y4)):
+def intersection(v1, v2, v3, v4):
     ''' UTILITY method to find the intersection point of X1X2 and X3X3 '''
+    # Start by unpacking the tuples of points
+    x1, y1 = v1
+    x2, y2 = v2
+    x3, y3 = v3
+    x4, y4 = v4
     px = float((x1*y2 - y1*x2)*(x3 - x4) - (x1 - x2)*(x3*y4 - y3*x4))
     d = float((x1 - x2)*(y3 - y4) - (y1 - y2)*(x3 - x4))
     py = float((x1*y2 - y1*x2)*(y3 - y4) - (y1 - y2)*(x3*y4 - y3*x4))
@@ -120,7 +125,8 @@ class CyclePainterPath:
             for x in self.cp.branch_points:
                 if intersect(s[0], s[1], x.branch_cut[0], x.branch_cut[1]):
                     intersections.append((x, intersection(s[0], s[1], x.branch_cut[0], x.branch_cut[1])))
-            intersections.sort(key=lambda (x, p): dist(s[0], p))
+            # Function key sorts by the distance between s[0] and the intersection, which is the second element of a tuple
+            intersections.sort(key=lambda x_p: dist(s[0], x_p[1]))
 
             last = s[0]
             for x, p in intersections:
@@ -399,7 +405,8 @@ class CyclePainter:
                         c='k', marker='.', zorder=3)
 
         # annotate all of the branch points
-        d_ann = (min(self.imag_span, self.real_span)/100).n()
+        # For some reason the .n() method is not reliable?
+        d_ann = numerical_approx(min(self.imag_span, self.real_span)/100)
         for i, x in enumerate(self.branch_points):
             annotation = r'({:d})'.format(i)
             self.ax.annotate(annotation, (x.real+d_ann, x.imag+d_ann), fontsize=7)
@@ -476,7 +483,8 @@ class CyclePainter:
 
         # add radio buttons for the starting sheet
         radioax = plt.axes([0.7, 0.55, 0.6, 0.03*self.degree], frameon=False, aspect='equal')
-        self.radio = RadioButtons(radioax, map(str, range(self.degree)), activecolor='black')
+        # Note map returns a map object in python3, so this must be converted to a list to be given as a label. 
+        self.radio = RadioButtons(radioax, list(map(str, range(self.degree))), activecolor='black')
         for circle in self.radio.circles: # adjust radius here. The default is 0.05
             circle.set_radius(0.4/self.degree)
         self.radio.on_clicked(self._radio_handler)
