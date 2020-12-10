@@ -416,9 +416,11 @@ class CyclePainter:
                         c='k', marker='x', zorder=3)
 
         # draw kappa circles around branch points
+        # kappa-circles are added as patches such that the autoscaling of axes recognises them.
+        # Maybe this will cause errors later?
         for x in self.branch_points:
             if x.is_finite:
-                self.ax.add_artist(plt.Circle((x.real, x.imag), self.kappa, color='k', alpha=0.06, linestyle=':'))
+                self.ax.add_patch(plt.Circle((x.real, x.imag), self.kappa, color='k', alpha=0.06, linestyle=':'))
 
         # draw discriminant points
         self.ax.scatter([x.real() for x in self.surface.discriminant_points],
