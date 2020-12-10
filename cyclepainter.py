@@ -278,7 +278,27 @@ class PathBuilder:
 
 
 class CyclePainter:
+    r"""
+    Create a CyclePainter object. This is an interactive plot on which one can draw paths, 
+    and then read in these paths for further operations. The plot displays the base space of
+    a Riemann surface thought of as a covering map with branch point.
 
+    INPUT:
+
+    - ''curve'' -- A bivariate polynomial with coefficients in an affine space. 
+
+    - ''initial_monodromy_point'' -- (default: None). A point in the complex plane given in the form (a+bj) 
+        where a,b are floats. This is modified to get pm by setting the imaginary part to be the same as pc.
+        If no point is specified, cyclepainter calculates one according to
+        the critera 1) Re(pm) << Re(b) for any branch point b, and 2) Im(pm) = Im(pc)
+
+    - ''cut_point'' -- (default: None). A point in the complex plane given in the form (a+bj) 
+        where a,b are floats. If no point is specified, cyclepainter calculates one according
+        to the critera 1) pc,pm and b are not collinear for any branch point b, 
+        2) for any two distinct branch points bi,bj, bj does not lie on the line segment bi-pc,
+        and 3) no angle <bi-pc-bj should be too small. 
+
+    """
     def __init__(self, curve=None, initial_monodromy_point=None, cut_point=None, kappa=3./5.):
         #####################
         # mathematical
@@ -311,8 +331,9 @@ class CyclePainter:
         #####################
         # The center of CyclePainter cuts
         self.cut_point = cut_point if cut_point else self._find_cut_point()
-
-        self.monodromy_point = np.complex(np.real(self.surface.base_point) + I*self.cut_point.imag())
+        # The monodromy point is calculated from the given initial monodromy point, but made to have the same imaginary part as the cut point.
+        # As no.real/np.imag calls a method, this method must be called to get the real or imaginary part. 
+        self.monodromy_point = np.complex(np.real(self.surface.base_point)() + I*np.imag(self.cut_point)())
         self.surface = RiemannSurface(curve, base_point=self.monodromy_point)
 
         bp, branch_permutations = self.surface.monodromy_group()
