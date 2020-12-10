@@ -458,7 +458,7 @@ class CyclePainter:
         self.ax.xaxis.set_label_coords(1.05, 0)
         self.ax.set_ylabel('Im')
         self.ax.yaxis.set_label_coords(0, 1.05)
-        self.ax.set_title('CyclePainter 2: Auckland', family='cursive')
+        self.ax.set_title('CyclePainter 2: Auckland', family='DejaVu Sans')
 
 
 
