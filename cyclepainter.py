@@ -307,7 +307,10 @@ class CyclePainter:
         self.surface = RiemannSurface(curve, base_point=initial_monodromy_point, kappa=kappa) # RiemannSurface object
         self.degree = self.surface.degree # number of sheets
         self.kappa = kappa
-
+        
+        # The monodromy group calculation is provided by abelfunctions. 
+        # It might be an idea to implement that, if the monodromy around one of the branch point is an n-cycle (if we have n branch points)
+        # then can we relabel the sheets s.t this cycle is (0, 1, ..., n-1). 
         bp, _ = self.surface.monodromy_group()
         self.branch_points = [BranchPoint(x, cp=self) for x in bp]
         self.has_infinite_bp = any(not x.is_finite for x in self.branch_points)
@@ -331,6 +334,7 @@ class CyclePainter:
         #####################
         # The center of CyclePainter cuts
         self.cut_point = cut_point if cut_point else self._find_cut_point()
+        
         # The monodromy point is calculated from the given initial monodromy point, but made to have the same imaginary part as the cut point.
         # As no.real/np.imag calls a method, this method must be called to get the real or imaginary part. 
         self.monodromy_point = np.complex(np.real(self.surface.base_point)() + I*np.imag(self.cut_point)())
@@ -416,7 +420,7 @@ class CyclePainter:
                         c='k', marker='x', zorder=3)
 
         # draw kappa circles around branch points
-        # kappa-circles are added as patches such that the autoscaling of axes recognises them.
+        # kappa-circles are added as patches such that the autoscaling of axes recognises them, see https://github.com/matplotlib/matplotlib/issues/2202/.
         # Maybe this will cause errors later?
         for x in self.branch_points:
             if x.is_finite:
