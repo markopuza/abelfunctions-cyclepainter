@@ -29,6 +29,8 @@ def ccw(a, b, c):
 
 def collinear(a, b, c):
     ''' UTILITY method to check if points a,b,c are collinear '''
+    # Note as pointed out by MP this can fail in certain cases, e.g. collinear((0,0), (2**0.5, 3**0.5), (7 * 2**0.5, 7 * 3**0.5))
+    # These should not impact the functionality of cyclepainter, but it is necessary to be aware of. 
     return  bool((c[1] - a[1]) * (b[0] - a[0]) == (b[1] - a[1]) * (c[0] - a[0]))
 
 def intersect(a, b, c, d):
@@ -101,7 +103,7 @@ class BranchPoint:
             outter = _norm(self.val, scale=R)
             circle_start = _norm(self.val, scale=np.abs(self.val - self.cp.cut_point) + r)
             ang = np.angle(outter - self.cp.cut_point) - np.angle(base_point - self.cp.cut_point)
-            if self.imag < self.cp.cut_point.imag():
+            if self.imag < imag_part(self.cp.cut_point):
                 ang = 2*np.pi + ang
 
             points_to_outter = [self.cp.monodromy_point] + [np.complex(self.cp.cut_point) + np.complex(base_point-self.cp.cut_point)*np.exp(1j*ang*float(i)/fineness) for i in range(fineness+1)]
@@ -374,8 +376,8 @@ class CyclePainter:
         self.cut_point = cut_point if cut_point else self._find_cut_point()
         
         # The monodromy point is calculated from the given initial monodromy point, but made to have the same imaginary part as the cut point.
-        # As no.real/np.imag calls a method, this method must be called to get the real or imaginary part. 
-        self.monodromy_point = np.complex(np.real(self.surface.base_point)() + I*np.imag(self.cut_point)())
+        # As np.real/np.imag calls a method, this method must be called to get the real or imaginary part. 
+        self.monodromy_point = np.complex(real_part(self.surface.base_point) + I*imag_part(self.cut_point))
         self.surface = RiemannSurface(curve, base_point=self.monodromy_point)
 
         bp, branch_permutations = self.surface.monodromy_group()
