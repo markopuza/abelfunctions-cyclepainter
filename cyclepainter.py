@@ -15,23 +15,58 @@ from abelfunctions.utilities import Permutation, matching_permutation
 
 
 def dist(p1, p2):
-    ''' UTILITY method for euclidean distance'''
+    ''' UTILITY method for euclidean distance '''
     return ((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)**0.5
 
 def ccw(a, b, c):
     ''' UTILITY method for determining orientation '''
+    # Algorithm copied from https://bryceboe.com/2006/10/23/line-segment-intersection-algorithm/
+    # Recall that a Riemann surface has a canonical orientation given by w=dx^dy if z=x+iy is the complex coordinate
+    # ccw returns True=1 if w(a->b,a->c)>0, i.e True if the vectors ab, ac are positively oriented.
+    # When a,b,c are colinear, we can no longer ask about the orientation as it is not defined. 
+    # Note ccw as a function will not detect this problem on its own. 
     return bool((c[1] - a[1]) * (b[0] - a[0]) > (b[1] - a[1]) * (c[0] - a[0]))
+
+def collinear(a, b, c):
+    ''' UTILITY method to check if points a,b,c are collinear '''
+    # Note as pointed out by MP this can fail in certain cases, e.g. collinear((0,0), (2**0.5, 3**0.5), (7 * 2**0.5, 7 * 3**0.5))
+    # These should not impact the functionality of cyclepainter, but it is necessary to be aware of. 
+    return  bool((c[1] - a[1]) * (b[0] - a[0]) == (b[1] - a[1]) * (c[0] - a[0]))
 
 def intersect(a, b, c, d):
     ''' UTILITY method to check if two *line segments* intersect '''
-    return bool(ccw(a, c, d) != ccw(b, c, d) and ccw(a, b, c) != ccw(a, b, d))
+    # Algorithm copied from https://bryceboe.com/2006/10/23/line-segment-intersection-algorithm/
+    # Suppose the segment ab intersects cd at a point e not at an end point. 
+    # Then necessarly the orientation of ac,ad is different from bc,bd. 
+    # Likewise for the orientation of ab,ac, wrt ab,ad.
+    # The method using ccw only robustly makes sense if all the points are distinct. 
+    # We will assume that out input has been cleaned s.t a!=b, and c!=d.
+    # We then need to only make a modification to check the 4 equalities a=c,a=d,b=c,b=d.
+    # This is as we genericall assume parallel line segments cannot overlap except at endpoints. 
+    return (a==c or a==d or b==c or b==d) if (collinear(a,b,c) and collinear(a,b,d)) else bool(ccw(a, c, d) != ccw(b, c, d) and ccw(a, b, c) != ccw(a, b, d))
 
-def intersection((x1, y1), (x2, y2), (x3, y3), (x4, y4)):
+def intersection(v1, v2, v3, v4):
     ''' UTILITY method to find the intersection point of X1X2 and X3X3 '''
-    px = float((x1*y2 - y1*x2)*(x3 - x4) - (x1 - x2)*(x3*y4 - y3*x4))
-    d = float((x1 - x2)*(y3 - y4) - (y1 - y2)*(x3 - x4))
-    py = float((x1*y2 - y1*x2)*(y3 - y4) - (y1 - y2)*(x3*y4 - y3*x4))
-    return (px/d, py/d)
+    # First check if the intersection is at an endpoint
+    # This is to avoid errors in the case that the intersection is at the endpoint of 
+    # two parallel line segments. 
+    if (v1==v3 or v1==v4):
+        return v1
+    elif (v2==v3 or v2==v4):
+        return v2
+    else:
+        # If not we use the standard calculation. 
+        # Start by unpacking the tuples of points
+        x1, y1 = v1
+        x2, y2 = v2
+        x3, y3 = v3
+        x4, y4 = v4
+        # This formula may be verified.
+        # It runs into similar problems when lines become vertical. 
+        px = float((x1*y2 - y1*x2)*(x3 - x4) - (x1 - x2)*(x3*y4 - y3*x4))
+        d = float((x1 - x2)*(y3 - y4) - (y1 - y2)*(x3 - x4))
+        py = float((x1*y2 - y1*x2)*(y3 - y4) - (y1 - y2)*(x3*y4 - y3*x4))
+        return (px/d, py/d)
 
 
 class BranchPoint:
@@ -68,7 +103,7 @@ class BranchPoint:
             outter = _norm(self.val, scale=R)
             circle_start = _norm(self.val, scale=np.abs(self.val - self.cp.cut_point) + r)
             ang = np.angle(outter - self.cp.cut_point) - np.angle(base_point - self.cp.cut_point)
-            if self.imag < self.cp.cut_point.imag():
+            if self.imag < imag_part(self.cp.cut_point):
                 ang = 2*np.pi + ang
 
             points_to_outter = [self.cp.monodromy_point] + [np.complex(self.cp.cut_point) + np.complex(base_point-self.cp.cut_point)*np.exp(1j*ang*float(i)/fineness) for i in range(fineness+1)]
@@ -120,7 +155,8 @@ class CyclePainterPath:
             for x in self.cp.branch_points:
                 if intersect(s[0], s[1], x.branch_cut[0], x.branch_cut[1]):
                     intersections.append((x, intersection(s[0], s[1], x.branch_cut[0], x.branch_cut[1])))
-            intersections.sort(key=lambda (x, p): dist(s[0], p))
+            # Function key sorts by the distance between s[0] and the intersection, which is the second element of a tuple
+            intersections.sort(key=lambda x_p: dist(s[0], x_p[1]))
 
             last = s[0]
             for x, p in intersections:
@@ -183,15 +219,25 @@ class CyclePainterPath:
 
     def intersection_number(self, path, eps=1e-10):
         ''' Calculates the intersection number with another path. '''
+        # We first just state identify that the self-inersection of any number is 0
         if path == self:
             return 0
+        # Alternatively we want to sum over all the intersections signed by orientation.
+        # We will run into problems if the intersection is at a branch cut for two reasons:
+        # 1) This is not a real intersection, it is an artefact of the method
+        # 2) The method for finding intersection points and orientations is not wll defined for colinear points. 
+        # Given the sensitivity of the input method in cyclepainter, we should only worry about this when 
+        # taking the intersection of a cycle with the same path but shifted by origin sheet. 
+        # Here, previously cyclepainter was detecting the artefact intersection depending on orientation.
+        # Now we robustly detect these, we need to know they are artefacts caused by branch cut. 
+        # Here we use the genericity of the prblem to assume all these endpoint intersections are artefacts. 
         intersections = 0
         for l, s in zip(self.lines, self.sheets):
             for ll, ss in zip(path.lines, path.sheets):
                 if s == ss:
                     if intersect(l[0], l[1], ll[0], ll[1]):
                         intersection_point = intersection(l[0], l[1], ll[0], ll[1])
-                        if dist(intersection_point, (np.real(self.cp.monodromy_point),  np.imag(self.cp.monodromy_point))) > eps:
+                        if ((dist(intersection_point, (np.real(self.cp.monodromy_point),  np.imag(self.cp.monodromy_point))) > eps) and not (l[1]==ll[0] or l[0] == ll[1])):
                             intersections += 1 if ccw(l[0], intersection_point, ll[1]) else -1
 
         # around the monodromy point
@@ -272,7 +318,27 @@ class PathBuilder:
 
 
 class CyclePainter:
+    r"""
+    Create a CyclePainter object. This is an interactive plot on which one can draw paths, 
+    and then read in these paths for further operations. The plot displays the base space of
+    a Riemann surface thought of as a covering map with branch point.
 
+    INPUT:
+
+    - ''curve'' -- A bivariate polynomial with coefficients in an affine space. 
+
+    - ''initial_monodromy_point'' -- (default: None). A point in the complex plane given in the form (a+bj) 
+        where a,b are floats. This is modified to get pm by setting the imaginary part to be the same as pc.
+        If no point is specified, cyclepainter calculates one according to
+        the critera 1) Re(pm) << Re(b) for any branch point b, and 2) Im(pm) = Im(pc)
+
+    - ''cut_point'' -- (default: None). A point in the complex plane given in the form (a+bj) 
+        where a,b are floats. If no point is specified, cyclepainter calculates one according
+        to the critera 1) pc,pm and b are not collinear for any branch point b, 
+        2) for any two distinct branch points bi,bj, bj does not lie on the line segment bi-pc,
+        and 3) no angle <bi-pc-bj should be too small. 
+
+    """
     def __init__(self, curve=None, initial_monodromy_point=None, cut_point=None, kappa=3./5.):
         #####################
         # mathematical
@@ -281,7 +347,10 @@ class CyclePainter:
         self.surface = RiemannSurface(curve, base_point=initial_monodromy_point, kappa=kappa) # RiemannSurface object
         self.degree = self.surface.degree # number of sheets
         self.kappa = kappa
-
+        
+        # The monodromy group calculation is provided by abelfunctions. 
+        # It might be an idea to implement that, if the monodromy around one of the branch point is an n-cycle (if we have n branch points)
+        # then can we relabel the sheets s.t this cycle is (0, 1, ..., n-1). 
         bp, _ = self.surface.monodromy_group()
         self.branch_points = [BranchPoint(x, cp=self) for x in bp]
         self.has_infinite_bp = any(not x.is_finite for x in self.branch_points)
@@ -305,8 +374,10 @@ class CyclePainter:
         #####################
         # The center of CyclePainter cuts
         self.cut_point = cut_point if cut_point else self._find_cut_point()
-
-        self.monodromy_point = np.complex(np.real(self.surface.base_point) + I*self.cut_point.imag())
+        
+        # The monodromy point is calculated from the given initial monodromy point, but made to have the same imaginary part as the cut point.
+        # As np.real/np.imag calls a method, this method must be called to get the real or imaginary part. 
+        self.monodromy_point = np.complex(real_part(self.surface.base_point) + I*imag_part(self.cut_point))
         self.surface = RiemannSurface(curve, base_point=self.monodromy_point)
 
         bp, branch_permutations = self.surface.monodromy_group()
@@ -389,9 +460,11 @@ class CyclePainter:
                         c='k', marker='x', zorder=3)
 
         # draw kappa circles around branch points
+        # kappa-circles are added as patches such that the autoscaling of axes recognises them, see https://github.com/matplotlib/matplotlib/issues/2202/.
+        # Maybe this will cause errors later?
         for x in self.branch_points:
             if x.is_finite:
-                self.ax.add_artist(plt.Circle((x.real, x.imag), self.kappa, color='k', alpha=0.06, linestyle=':'))
+                self.ax.add_patch(plt.Circle((x.real, x.imag), self.kappa, color='k', alpha=0.06, linestyle=':'))
 
         # draw discriminant points
         self.ax.scatter([x.real() for x in self.surface.discriminant_points],
@@ -399,7 +472,8 @@ class CyclePainter:
                         c='k', marker='.', zorder=3)
 
         # annotate all of the branch points
-        d_ann = (min(self.imag_span, self.real_span)/100).n()
+        # For some reason the .n() method is not reliable?
+        d_ann = numerical_approx(min(self.imag_span, self.real_span)/100)
         for i, x in enumerate(self.branch_points):
             annotation = r'({:d})'.format(i)
             self.ax.annotate(annotation, (x.real+d_ann, x.imag+d_ann), fontsize=7)
@@ -424,7 +498,7 @@ class CyclePainter:
         self.ax.xaxis.set_label_coords(1.05, 0)
         self.ax.set_ylabel('Im')
         self.ax.yaxis.set_label_coords(0, 1.05)
-        self.ax.set_title('CyclePainter 2: Auckland', family='cursive')
+        self.ax.set_title('CyclePainter 2: Auckland', family='DejaVu Sans')
 
 
 
@@ -476,7 +550,8 @@ class CyclePainter:
 
         # add radio buttons for the starting sheet
         radioax = plt.axes([0.7, 0.55, 0.6, 0.03*self.degree], frameon=False, aspect='equal')
-        self.radio = RadioButtons(radioax, map(str, range(self.degree)), activecolor='black')
+        # Note map returns a map object in python3, so this must be converted to a list to be given as a label. 
+        self.radio = RadioButtons(radioax, list(map(str, range(self.degree))), activecolor='black')
         for circle in self.radio.circles: # adjust radius here. The default is 0.05
             circle.set_radius(0.4/self.degree)
         self.radio.on_clicked(self._radio_handler)
