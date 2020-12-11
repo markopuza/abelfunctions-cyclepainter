@@ -15,7 +15,7 @@ from abelfunctions.utilities import Permutation, matching_permutation
 
 
 def dist(p1, p2):
-    ''' UTILITY method for euclidean distance'''
+    ''' UTILITY method for euclidean distance '''
     return ((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)**0.5
 
 def ccw(a, b, c):
@@ -27,27 +27,44 @@ def ccw(a, b, c):
     # Note ccw as a function will not detect this problem on its own. 
     return bool((c[1] - a[1]) * (b[0] - a[0]) > (b[1] - a[1]) * (c[0] - a[0]))
 
+def collinear(a, b, c):
+    ''' UTILITY method to check if points a,b,c are collinear '''
+    return  bool((c[1] - a[1]) * (b[0] - a[0]) == (b[1] - a[1]) * (c[0] - a[0]))
+
 def intersect(a, b, c, d):
     ''' UTILITY method to check if two *line segments* intersect '''
     # Algorithm copied from https://bryceboe.com/2006/10/23/line-segment-intersection-algorithm/
     # Suppose the segment ab intersects cd at a point e not at an end point. 
     # Then necessarly the orientation of ac,ad is different from bc,bd. 
     # Likewise for the orientation of ab,ac, wrt ab,ad.
-    return bool(ccw(a, c, d) != ccw(b, c, d) and ccw(a, b, c) != ccw(a, b, d))
+    # The method using ccw only robustly makes sense if all the points are distinct. 
+    # We will assume that out input has been cleaned s.t a!=b, and c!=d.
+    # We then need to only make a modification to check the 4 equalities a=c,a=d,b=c,b=d.
+    # This is as we genericall assume parallel line segments cannot overlap except at endpoints. 
+    return (a==c or a==d or b==c or b==d) if (collinear(a,b,c) and collinear(a,b,d)) else bool(ccw(a, c, d) != ccw(b, c, d) and ccw(a, b, c) != ccw(a, b, d))
 
 def intersection(v1, v2, v3, v4):
     ''' UTILITY method to find the intersection point of X1X2 and X3X3 '''
-    # Start by unpacking the tuples of points
-    x1, y1 = v1
-    x2, y2 = v2
-    x3, y3 = v3
-    x4, y4 = v4
-    # This formula may be verified.
-    # It runs into similar problems when lines become vertical. 
-    px = float((x1*y2 - y1*x2)*(x3 - x4) - (x1 - x2)*(x3*y4 - y3*x4))
-    d = float((x1 - x2)*(y3 - y4) - (y1 - y2)*(x3 - x4))
-    py = float((x1*y2 - y1*x2)*(y3 - y4) - (y1 - y2)*(x3*y4 - y3*x4))
-    return (px/d, py/d)
+    # First check if the intersection is at an endpoint
+    # This is to avoid errors in the case that the intersection is at the endpoint of 
+    # two parallel line segments. 
+    if (v1==v3 or v1==v4):
+        return v1
+    elif (v2==v3 or v2==v4):
+        return v2
+    else:
+        # If not we use the standard calculation. 
+        # Start by unpacking the tuples of points
+        x1, y1 = v1
+        x2, y2 = v2
+        x3, y3 = v3
+        x4, y4 = v4
+        # This formula may be verified.
+        # It runs into similar problems when lines become vertical. 
+        px = float((x1*y2 - y1*x2)*(x3 - x4) - (x1 - x2)*(x3*y4 - y3*x4))
+        d = float((x1 - x2)*(y3 - y4) - (y1 - y2)*(x3 - x4))
+        py = float((x1*y2 - y1*x2)*(y3 - y4) - (y1 - y2)*(x3*y4 - y3*x4))
+        return (px/d, py/d)
 
 
 class BranchPoint:
@@ -200,15 +217,25 @@ class CyclePainterPath:
 
     def intersection_number(self, path, eps=1e-10):
         ''' Calculates the intersection number with another path. '''
+        # We first just state identify that the self-inersection of any number is 0
         if path == self:
             return 0
+        # Alternatively we want to sum over all the intersections signed by orientation.
+        # We will run into problems if the intersection is at a branch cut for two reasons:
+        # 1) This is not a real intersection, it is an artefact of the method
+        # 2) The method for finding intersection points and orientations is not wll defined for colinear points. 
+        # Given the sensitivity of the input method in cyclepainter, we should only worry about this when 
+        # taking the intersection of a cycle with the same path but shifted by origin sheet. 
+        # Here, previously cyclepainter was detecting the artefact intersection depending on orientation.
+        # Now we robustly detect these, we need to know they are artefacts caused by branch cut. 
+        # Here we use the genericity of the prblem to assume all these endpoint intersections are artefacts. 
         intersections = 0
         for l, s in zip(self.lines, self.sheets):
             for ll, ss in zip(path.lines, path.sheets):
                 if s == ss:
                     if intersect(l[0], l[1], ll[0], ll[1]):
                         intersection_point = intersection(l[0], l[1], ll[0], ll[1])
-                        if dist(intersection_point, (np.real(self.cp.monodromy_point),  np.imag(self.cp.monodromy_point))) > eps:
+                        if ((dist(intersection_point, (np.real(self.cp.monodromy_point),  np.imag(self.cp.monodromy_point))) > eps) and not (l[1]==ll[0] or l[0] == ll[1])):
                             intersections += 1 if ccw(l[0], intersection_point, ll[1]) else -1
 
         # around the monodromy point
