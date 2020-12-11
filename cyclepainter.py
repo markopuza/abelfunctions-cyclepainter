@@ -20,10 +20,19 @@ def dist(p1, p2):
 
 def ccw(a, b, c):
     ''' UTILITY method for determining orientation '''
+    # Algorithm copied from https://bryceboe.com/2006/10/23/line-segment-intersection-algorithm/
+    # Recall that a Riemann surface has a canonical orientation given by w=dx^dy if z=x+iy is the complex coordinate
+    # ccw returns True=1 if w(a->b,a->c)>0, i.e True if the vectors ab, ac are positively oriented.
+    # When a,b,c are colinear, we can no longer ask about the orientation as it is not defined. 
+    # Note ccw as a function will not detect this problem on its own. 
     return bool((c[1] - a[1]) * (b[0] - a[0]) > (b[1] - a[1]) * (c[0] - a[0]))
 
 def intersect(a, b, c, d):
     ''' UTILITY method to check if two *line segments* intersect '''
+    # Algorithm copied from https://bryceboe.com/2006/10/23/line-segment-intersection-algorithm/
+    # Suppose the segment ab intersects cd at a point e not at an end point. 
+    # Then necessarly the orientation of ac,ad is different from bc,bd. 
+    # Likewise for the orientation of ab,ac, wrt ab,ad.
     return bool(ccw(a, c, d) != ccw(b, c, d) and ccw(a, b, c) != ccw(a, b, d))
 
 def intersection(v1, v2, v3, v4):
@@ -33,6 +42,8 @@ def intersection(v1, v2, v3, v4):
     x2, y2 = v2
     x3, y3 = v3
     x4, y4 = v4
+    # This formula may be verified.
+    # It runs into similar problems when lines become vertical. 
     px = float((x1*y2 - y1*x2)*(x3 - x4) - (x1 - x2)*(x3*y4 - y3*x4))
     d = float((x1 - x2)*(y3 - y4) - (y1 - y2)*(x3 - x4))
     py = float((x1*y2 - y1*x2)*(y3 - y4) - (y1 - y2)*(x3*y4 - y3*x4))
